@@ -1,0 +1,133 @@
+local EnemiesCFrame = {
+    ["Shanda"] = CFrame.new(-7658.84473, 5549.19629, -498.609283, -0.769992888, -1.54135886e-08, 0.638052464, -1.77663537e-08, 1, 2.71705347e-09, -0.638052464, -9.24375421e-09, -0.769992888)
+}
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local VirtualUser = game:GetService("VirtualUser")
+local LocalPlayer = Players.LocalPlayer
+
+local Settings = {
+    TweenSpeed = 210
+}
+
+local ShandaFarm = {
+    Cached = {},
+    IsFarming = false
+}
+
+local function GetDistance(cframe)
+    local character = LocalPlayer.Character
+    return character and character.PrimaryPart and (character.PrimaryPart.Position - cframe.Position).Magnitude or math.huge
+end
+
+local function ToTarget(targetCFrame)
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    
+    local rootPart = character.HumanoidRootPart
+    local humanoid = character.Humanoid
+    local distance = (rootPart.Position - targetCFrame.Position).Magnitude
+    
+    if humanoid.Sit then humanoid.Sit = false end
+    
+    local tweenInfo = TweenInfo.new(distance / Settings.TweenSpeed, Enum.EasingStyle.Linear)
+    local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
+    tween:Play()
+    
+    if distance <= 250 then
+        tween:Cancel()
+        rootPart.CFrame = targetCFrame
+    end
+    
+    return tween
+end
+
+local function IsAlive(enemy)
+    local humanoid = enemy:FindFirstChild("Humanoid")
+    return humanoid and humanoid.Health > 0 and enemy:FindFirstChild("HumanoidRootPart") ~= nil
+end
+
+local function AutoHaki()
+    if not LocalPlayer.Character:FindFirstChild("HasBuso") then
+        ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
+    end
+end
+
+local function EquipWeapon(weaponName)
+    local backpack = LocalPlayer.Backpack
+    local character = LocalPlayer.Character
+    local humanoid = character and character:FindFirstChild("Humanoid")
+    
+    if backpack and backpack:FindFirstChild(weaponName) and humanoid then
+        humanoid:EquipTool(backpack[weaponName])
+    end
+end
+
+local function FindMeleeWeapon()
+    for _, item in pairs(LocalPlayer.Backpack:GetChildren()) do
+        if item.ToolTip == "Melee" then return item.Name end
+    end
+    return nil
+end
+
+_G.SkyFarm = true
+_G.SelectWeapon = nil
+
+local function ShandaFarmLoop()
+    while task.wait() do
+        if not _G.SkyFarm or not Workspace.Map:FindFirstChild("Sky") then return end
+        pcall(function()
+            local rootPart = LocalPlayer.Character.HumanoidRootPart
+            if (rootPart.Position - Vector3.new(-7894.62, 5547.14, -380.29)).Magnitude > 500 then
+                ReplicatedStorage.Remotes.CommF_:InvokeServer(
+                    "requestEntrance",
+                    Vector3.new(-7894.62, 5547.14, -380.29)
+                )
+                task.wait(1)
+            end
+            local shandaFound = false
+            for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
+                if enemy.Name == "Shanda" and IsAlive(enemy) then
+                    shandaFound = true
+                    repeat task.wait()
+                        AutoHaki()
+                        EquipWeapon(_G.SelectWeapon or FindMeleeWeapon())
+                        enemy.HumanoidRootPart.CanCollide = false
+                        enemy.Humanoid.WalkSpeed = 0
+                        enemy.HumanoidRootPart.Size = Vector3.new(80, 80, 80)
+                        ToTarget(enemy.HumanoidRootPart.CFrame * CFrame.new(0, 10, 0))
+                        VirtualUser:CaptureController()
+                        VirtualUser:Button1Down(Vector2.new(1280, 672))
+                    until not _G.SkyFarm or not enemy.Parent or enemy.Humanoid.Health <= 0
+                end
+            end
+            if not shandaFound then
+                local targetCFrame = EnemiesCFrame["Shanda"]
+                ToTarget(targetCFrame * CFrame.new(5, 10, 2))
+            end
+        end)
+    end
+end
+
+task.spawn(function()
+    while task.wait(5) do
+        if not _G.SelectWeapon then 
+            _G.SelectWeapon = FindMeleeWeapon()
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.1) do 
+        AutoHaki() 
+    end
+end)
+
+task.spawn(ShandaFarmLoop)
+
+getgenv().GetShandaCFrame = function()
+    return EnemiesCFrame["Shanda"]
+end
