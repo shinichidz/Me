@@ -1,5 +1,6 @@
 local EnemiesCFrame = {
-    ["Shanda"] = CFrame.new(-7658.84473, 5549.19629, -498.609283, -0.769992888, -1.54135886e-08, 0.638052464, -1.77663537e-08, 1, 2.71705347e-09, -0.638052464, -9.24375421e-09, -0.769992888)
+    ["Shanda"] = CFrame.new(-7658.84473, 5549.19629, -498.609283, -0.769992888, -1.54135886e-08, 0.638052464, -1.77663537e-08, 1, 2.71705347e-09, -0.638052464, -9.24375421e-09, -0.769992888),
+    ["Royal Squad"] = CFrame.new(-7610.18066, 5610.58154, -1476.4823, 0.478884637, 6.79618708e-08, -0.877877831, 4.54469031e-08, 1, 1.02207494e-07, 0.877877831, -8.88424267e-08, 0.478884637)
 }
 
 local Players = game:GetService("Players")
@@ -10,7 +11,8 @@ local VirtualUser = game:GetService("VirtualUser")
 local LocalPlayer = Players.LocalPlayer
 
 local Settings = {
-    TweenSpeed = 210
+    TweenSpeed = 210,
+    BringDistance = 500
 }
 
 local ShandaFarm = {
@@ -73,14 +75,53 @@ local function FindMeleeWeapon()
     return nil
 end
 
+local function BringMob(enemy)
+    if not IsAlive(enemy) or not enemy:FindFirstChild("HumanoidRootPart") then return end
+    
+    local rootPart = enemy.HumanoidRootPart
+    local humanoid = enemy.Humanoid
+    local targetPos = LocalPlayer.Character.HumanoidRootPart.Position
+    
+    if GetDistance(rootPart.CFrame) < Settings.BringDistance then
+        humanoid.WalkSpeed = 0
+        rootPart.CFrame = CFrame.new(targetPos + Vector3.new(0, 10, 0))
+    end
+end
+
+local function DetectMob(mobNames)
+    if typeof(mobNames) == "string" then mobNames = {mobNames} end
+    for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
+        for _, name in pairs(mobNames) do
+            if enemy.Name == name and IsAlive(enemy) then
+                return enemy
+            end
+        end
+    end
+    return nil
+end
+
+local function TeleportSpawnMob(mobNames, shouldTeleport)
+    if not shouldTeleport then return end
+    if typeof(mobNames) == "string" then mobNames = {mobNames} end
+    for _, name in pairs(mobNames) do
+        if EnemiesCFrame[name] then
+            ToTarget(EnemiesCFrame[name] * CFrame.new(5, 10, 2))
+            break
+        end
+    end
+end
+
 _G.SkyFarm = true
 _G.SelectWeapon = nil
+_G.AutoFarm = true
 
-local function ShandaFarmLoop()
+local function FarmLoop()
     while task.wait() do
-        if not _G.SkyFarm or not Workspace.Map:FindFirstChild("Sky") then return end
+        if not _G.AutoFarm or not Workspace.Map:FindFirstChild("Sky") then return end
+        
         pcall(function()
             local rootPart = LocalPlayer.Character.HumanoidRootPart
+
             if (rootPart.Position - Vector3.new(-7894.62, 5547.14, -380.29)).Magnitude > 500 then
                 ReplicatedStorage.Remotes.CommF_:InvokeServer(
                     "requestEntrance",
@@ -88,30 +129,29 @@ local function ShandaFarmLoop()
                 )
                 task.wait(1)
             end
-            local shandaFound = false
-            for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
-                if enemy.Name == "Shanda" and IsAlive(enemy) then
-                    shandaFound = true
-                    repeat task.wait()
-                        AutoHaki()
-                        EquipWeapon(_G.SelectWeapon or FindMeleeWeapon())
-                        enemy.HumanoidRootPart.CanCollide = false
-                        enemy.Humanoid.WalkSpeed = 0
-                        enemy.HumanoidRootPart.Size = Vector3.new(80, 80, 80)
-                        ToTarget(enemy.HumanoidRootPart.CFrame * CFrame.new(0, 10, 0))
-                        VirtualUser:CaptureController()
-                        VirtualUser:Button1Down(Vector2.new(1280, 672))
-                    until not _G.SkyFarm or not enemy.Parent or enemy.Humanoid.Health <= 0
-                end
-            end
-            if not shandaFound then
-                local targetCFrame = EnemiesCFrame["Shanda"]
-                ToTarget(targetCFrame * CFrame.new(5, 10, 2))
+            
+            local mobLevelFarm = LocalPlayer.Data.Level.Value < 120 and LocalPlayer.Data.Level.Value >= 10 
+                and {"Royal Squad", "Shanda"} or {"Shanda"}
+            
+            local targetMob = DetectMob(mobLevelFarm)
+            
+            if targetMob then
+                repeat task.wait()
+                    task.spawn(function() BringMob(targetMob) end)
+                    targetMob.HumanoidRootPart.CanCollide = false
+                    targetMob.HumanoidRootPart.Size = Vector3.new(80, 80, 80)
+                    AutoHaki()
+                    EquipWeapon(_G.SelectWeapon or FindMeleeWeapon())
+                    ToTarget(targetMob.HumanoidRootPart.CFrame * CFrame.new(0, 10, 0))
+                    VirtualUser:CaptureController()
+                    VirtualUser:Button1Down(Vector2.new(1280, 672))
+                until not _G.AutoFarm or not targetMob.Parent or targetMob.Humanoid.Health <= 0
+            else
+                TeleportSpawnMob(mobLevelFarm, true)
             end
         end)
     end
 end
-
 task.spawn(function()
     while task.wait(5) do
         if not _G.SelectWeapon then 
@@ -126,7 +166,7 @@ task.spawn(function()
     end
 end)
 
-task.spawn(ShandaFarmLoop)
+task.spawn(FarmLoop)
 
 getgenv().GetShandaCFrame = function()
     return EnemiesCFrame["Shanda"]
